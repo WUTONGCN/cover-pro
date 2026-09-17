@@ -12,10 +12,10 @@ function App() {
   const [activeRightTab, setActiveRightTab] = useState<'property' | 'layer'>('property')
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="min-h-screen xl:h-screen flex flex-col xl:overflow-hidden">
       <Header />
       
-      <main className="flex-1 overflow-hidden">
+      <main className="flex-1 xl:overflow-hidden">
         <div className="container mx-auto px-3 py-3 h-full max-w-[1920px]">
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 h-full">
           {/* Left Panel - Content Controls */}
@@ -81,7 +81,7 @@ function App() {
           </div>
 
           {/* Center Panel - Advanced Canvas */}
-          <div className="xl:col-span-7 flex flex-col overflow-hidden">
+          <div className="xl:col-span-7 min-h-[520px] xl:min-h-0 flex flex-col overflow-hidden">
             <div className="card p-4 flex-1 flex flex-col overflow-hidden">
               <AdvancedCanvas />
             </div>

@@ -1,6 +1,7 @@
+import { renderCanvas as renderScene } from '../utils/renderCanvas'
 import { useRef, useState, useEffect, useCallback } from 'react'
 import { useEditorStore } from '../store/editorStore'
-import type { CanvasElement, TextElement, EmojiElement, ShapeElement } from '../types'
+import type { CanvasElement, TextElement, ShapeElement, EmojiElement } from '../types'
 
 type HandleType = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'rotate' | 'move' | null
 
@@ -8,7 +9,7 @@ export default function AdvancedCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const { canvas, elements, updateElement, selectElement, selectedElementIds, removeElement, duplicateElement, clearSelection } = useEditorStore()
+  const { canvas, elements, updateElement, selectElement, selectedElementIds, removeElement, duplicateElement, clearSelection, undo, redo, beginTransaction, endTransaction } = useEditorStore()
   
   const [dragState, setDragState] = useState<{
     type: HandleType
@@ -31,7 +32,7 @@ export default function AdvancedCanvas() {
       const containerHeight = containerRef.current.clientHeight - 48
       const scaleX = containerWidth / canvas.width
       const scaleY = containerHeight / canvas.height
-      setDisplayScale(Math.min(scaleX, scaleY, 1))
+      setDisplayScale(Math.max(0.05, Math.min(scaleX, scaleY, 1)))
     }
     
     updateScale()
@@ -44,37 +45,7 @@ export default function AdvancedCanvas() {
     const ctx = canvasRef.current?.getContext('2d')
     if (!ctx) return
 
-    // 清空
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    
-    // 背景
-    ctx.fillStyle = canvas.backgroundColor
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-    // 绘制所有元素（按z-index排序）
-    const sorted = [...elements].sort((a, b) => a.zIndex - b.zIndex)
-    sorted.forEach(el => {
-      if (!el.visible || (editingText === el.id && el.type === 'text')) return
-      
-      ctx.save()
-      ctx.globalAlpha = el.opacity
-
-      // 应用旋转
-      if (el.rotation) {
-        const cx = el.x + el.width / 2
-        const cy = el.y + el.height / 2
-        ctx.translate(cx, cy)
-        ctx.rotate((el.rotation * Math.PI) / 180)
-        ctx.translate(-cx, -cy)
-      }
-
-      // 绘制元素
-      if (el.type === 'text') drawText(ctx, el as TextElement)
-      else if (el.type === 'emoji') drawEmoji(ctx, el as EmojiElement)
-      else if (el.type === 'shape') drawShape(ctx, el as ShapeElement)
-
-      ctx.restore()
-    })
+    renderScene(ctx, canvas, elements.filter(el => el.id !== editingText))
 
     // 绘制选中框和控制点
     const selected = elements.find(el => selectedElementIds.includes(el.id))
@@ -86,97 +57,6 @@ export default function AdvancedCanvas() {
   useEffect(() => {
     renderCanvas()
   }, [renderCanvas])
-
-  // 绘制文本
-  const drawText = (ctx: CanvasRenderingContext2D, el: TextElement) => {
-    ctx.font = `${el.fontWeight} ${el.fontSize}px ${el.fontFamily}`
-    ctx.fillStyle = el.color
-    ctx.textAlign = el.textAlign
-    ctx.textBaseline = 'top'
-
-    const lines = el.content.split('\n')
-    const lineHeight = el.fontSize * el.lineHeight
-    let x = el.x
-    if (el.textAlign === 'center') x = el.x + el.width / 2
-    else if (el.textAlign === 'right') x = el.x + el.width
-
-    lines.forEach((line, i) => {
-      if (el.letterSpacing) {
-        let curX = x
-        const chars = line.split('')
-        if (el.textAlign === 'center') {
-          const totalW = ctx.measureText(line).width + (chars.length - 1) * el.letterSpacing
-          curX = x - totalW / 2
-        } else if (el.textAlign === 'right') {
-          const totalW = ctx.measureText(line).width + (chars.length - 1) * el.letterSpacing
-          curX = x - totalW
-        }
-        chars.forEach(char => {
-          ctx.fillText(char, curX, el.y + i * lineHeight)
-          curX += ctx.measureText(char).width + el.letterSpacing
-        })
-      } else {
-        ctx.fillText(line, x, el.y + i * lineHeight)
-      }
-    })
-  }
-
-  // 绘制Emoji
-  const drawEmoji = (ctx: CanvasRenderingContext2D, el: EmojiElement) => {
-    ctx.font = `${el.fontSize}px Arial`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(el.emoji, el.x + el.width / 2, el.y + el.height / 2)
-  }
-
-  // 绘制形状
-  const drawShape = (ctx: CanvasRenderingContext2D, el: ShapeElement) => {
-    ctx.fillStyle = el.fillColor
-    if (el.strokeColor && el.strokeWidth) {
-      ctx.strokeStyle = el.strokeColor
-      ctx.lineWidth = el.strokeWidth
-    }
-
-    if (el.shapeType === 'rect') {
-      if (el.borderRadius) {
-        const r = Math.min(el.borderRadius, el.width / 2, el.height / 2)
-        ctx.beginPath()
-        ctx.moveTo(el.x + r, el.y)
-        ctx.arcTo(el.x + el.width, el.y, el.x + el.width, el.y + el.height, r)
-        ctx.arcTo(el.x + el.width, el.y + el.height, el.x, el.y + el.height, r)
-        ctx.arcTo(el.x, el.y + el.height, el.x, el.y, r)
-        ctx.arcTo(el.x, el.y, el.x + el.width, el.y, r)
-        ctx.closePath()
-        ctx.fill()
-        if (el.strokeColor) ctx.stroke()
-      } else {
-        ctx.fillRect(el.x, el.y, el.width, el.height)
-        if (el.strokeColor) ctx.strokeRect(el.x, el.y, el.width, el.height)
-      }
-    } else if (el.shapeType === 'circle') {
-      ctx.beginPath()
-      ctx.arc(el.x + el.width / 2, el.y + el.height / 2, Math.min(el.width, el.height) / 2, 0, Math.PI * 2)
-      ctx.fill()
-      if (el.strokeColor) ctx.stroke()
-    } else if (el.shapeType === 'star') {
-      const cx = el.x + el.width / 2
-      const cy = el.y + el.height / 2
-      const or = Math.min(el.width, el.height) / 2
-      const ir = or * 0.4
-      let angle = -Math.PI / 2
-      const step = Math.PI / 5
-      
-      ctx.beginPath()
-      for (let i = 0; i < 10; i++) {
-        const r = i % 2 === 0 ? or : ir
-        ctx.lineTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle))
-        angle += step
-      }
-      ctx.closePath()
-      ctx.fill()
-      if (el.strokeColor) ctx.stroke()
-    }
-  }
 
   // 绘制选中框
   const drawSelection = (ctx: CanvasRenderingContext2D, el: CanvasElement) => {
@@ -297,13 +177,14 @@ export default function AdvancedCanvas() {
     if (!coords) return
 
     const detection = detectHandle(coords.x, coords.y)
-    if (!detection) {
+    if (!detection || detection.el.locked) {
       clearSelection()
       setShowToolbar(false)
       return
     }
 
     selectElement(detection.el.id)
+    beginTransaction()
     setDragState({
       type: detection.type,
       elementId: detection.el.id,
@@ -336,7 +217,7 @@ export default function AdvancedCanvas() {
           'w': 'w-resize',
           'rotate': 'grab'
         }
-        canvasRef.current.style.cursor = cursorMap[detection.type] || 'default'
+        canvasRef.current.style.cursor = cursorMap[detection.type || ''] || 'default'
       } else if (canvasRef.current) {
         canvasRef.current.style.cursor = 'default'
       }
@@ -402,6 +283,7 @@ export default function AdvancedCanvas() {
         setTimeout(() => setShowToolbar(true), 50)
       }
     }
+    endTransaction()
     setDragState(null)
   }
 
@@ -411,7 +293,8 @@ export default function AdvancedCanvas() {
     if (!coords) return
 
     const detection = detectHandle(coords.x, coords.y)
-    if (detection && detection.el.type === 'text') {
+    if (detection && !detection.el.locked && detection.el.type === 'text') {
+      beginTransaction()
       setEditingText(detection.el.id)
       setShowToolbar(false)
       setTimeout(() => inputRef.current?.focus(), 50)
@@ -421,12 +304,21 @@ export default function AdvancedCanvas() {
   // 键盘快捷键
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (editingText) return
+      const target = e.target as HTMLElement
+      if (editingText || target.closest('input, textarea, select, [contenteditable="true"]')) return
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        if (e.shiftKey) redo(); else undo()
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault(); redo(); return
+      }
       if (selectedElementIds.length === 0) return
 
       const id = selectedElementIds[0]
       const el = elements.find(e => e.id === id)
-      if (!el) return
+      if (!el || el.locked) return
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
         removeElement(id)
@@ -449,7 +341,7 @@ export default function AdvancedCanvas() {
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [selectedElementIds, elements, editingText, removeElement, duplicateElement, updateElement])
+  }, [selectedElementIds, elements, editingText, removeElement, duplicateElement, updateElement, undo, redo])
 
   const selectedEl = elements.find(el => selectedElementIds.includes(el.id))
 
@@ -497,7 +389,7 @@ export default function AdvancedCanvas() {
               ref={inputRef}
               value={(selectedEl as TextElement).content}
               onChange={e => updateElement(editingText, { content: e.target.value })}
-              onBlur={() => setEditingText(null)}
+              onBlur={() => { endTransaction(); setEditingText(null) }}
               className="absolute border-2 border-blue-500 rounded-lg p-2 bg-white shadow-2xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
               style={{
                 left: selectedEl.x * displayScale,

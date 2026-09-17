@@ -10,6 +10,8 @@ export type TemplateType =
   | 'checklist'
   | 'quote'
   | 'minimal'
+  | 'gradient' | 'card3d' | 'cyberpunk' | 'retro' | 'magazine'
+  | 'tech' | 'handdrawn' | 'glassmorphism' | 'memphis' | 'chinese'
 
 export interface Template {
   id: string
@@ -162,8 +164,8 @@ export interface EditorState {
   template?: Template
   colorTheme?: ColorTheme
   history: {
-    past: EditorState[]
-    future: EditorState[]
+    past: EditorSnapshot[]
+    future: EditorSnapshot[]
   }
 }
 
@@ -176,3 +178,5 @@ export interface Font {
   weights: number[]
 }
 
+
+export type EditorSnapshot = Omit<EditorState, 'history'>

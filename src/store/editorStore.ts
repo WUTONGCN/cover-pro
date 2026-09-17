@@ -1,11 +1,10 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
-import type { EditorState, CanvasElement, Template, ColorTheme, PlatformSize } from '../types'
-import { templates } from '../data/templates'
-import { colorThemes } from '../data/colorThemes'
-import { platformSizes } from '../data/platformSizes'
+import type { EditorState, EditorSnapshot, CanvasElement, Template, ColorTheme, PlatformSize } from '../types'
 
 interface EditorStore extends EditorState {
+  beginTransaction: () => void
+  endTransaction: () => void
   // Actions
   setTemplate: (template: Template) => void
   setColorTheme: (theme: ColorTheme) => void
@@ -32,6 +31,8 @@ const getInitialState = (): EditorState => ({
     height: 1440,
     backgroundColor: '#FBFFE4',
   },
+  template: undefined,
+  colorTheme: undefined,
   elements: [],
   selectedElementIds: [],
   history: {
@@ -40,7 +41,38 @@ const getInitialState = (): EditorState => ({
   },
 })
 
-export const useEditorStore = create<EditorStore>((set, get) => ({
+const snapshot = (state: EditorState): EditorSnapshot => structuredClone({
+  canvas: state.canvas, elements: state.elements, selectedElementIds: state.selectedElementIds,
+  template: state.template, colorTheme: state.colorTheme,
+})
+const sameDocument = (a: EditorState | EditorSnapshot, b: EditorState | EditorSnapshot) =>
+  JSON.stringify([a.canvas, a.elements, a.template, a.colorTheme]) ===
+  JSON.stringify([b.canvas, b.elements, b.template, b.colorTheme])
+
+export const useEditorStore = create<EditorStore>((rawSet, get) => {
+  let transaction: EditorSnapshot | null = null
+  const set: typeof rawSet = (update) => {
+    const before = get()
+    const changes = typeof update === 'function' ? update(before) : update
+    const after = { ...before, ...changes }
+    if (sameDocument(before, after)) {
+      rawSet(changes)
+      return
+    }
+    rawSet({ ...changes, history: {
+      past: transaction ? before.history.past : [...before.history.past, snapshot(before)].slice(-100),
+      future: [],
+    } })
+  }
+  return ({
+  beginTransaction: () => { if (!transaction) transaction = snapshot(get()) },
+  endTransaction: () => {
+    const before = transaction
+    transaction = null
+    if (before && !sameDocument(before, get())) {
+      rawSet({ history: { past: [...get().history.past, before].slice(-100), future: [] } })
+    }
+  },
   ...getInitialState(),
 
   setTemplate: (template) => {
@@ -111,7 +143,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   updateElement: (id, updates) => {
     set((state) => ({
       elements: state.elements.map((el) =>
-        el.id === id ? { ...el, ...updates } as CanvasElement : el
+        el.id === id && (!el.locked || Object.keys(updates).every(key => key === 'locked' || key === 'visible'))
+          ? { ...el, ...updates } as CanvasElement : el
       ),
     }))
   },
@@ -145,7 +178,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
   moveElement: (id, direction) => {
     set((state) => {
-      const elements = [...state.elements]
+      const elements = state.elements.map(el => ({ ...el }))
       const index = elements.findIndex((el) => el.id === id)
       
       if (index === -1) return state
@@ -155,12 +188,12 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       switch (direction) {
         case 'up':
           if (index < elements.length - 1) {
-            ;[elements[index], elements[index + 1]] = [elements[index + 1], elements[index]]
+            [elements[index], elements[index + 1]] = [elements[index + 1], elements[index]]
           }
           break
         case 'down':
           if (index > 0) {
-            ;[elements[index], elements[index - 1]] = [elements[index - 1], elements[index]]
+            [elements[index], elements[index - 1]] = [elements[index - 1], elements[index]]
           }
           break
         case 'top':
@@ -228,8 +261,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
     const selectedElements = elements.filter(el => selectedElementIds.includes(el.id))
     
-    selectedElements.forEach(element => {
-      let updates: Partial<CanvasElement> = {}
+    get().beginTransaction()
+    selectedElements.filter(element => !element.locked).forEach(element => {
+      const updates: Partial<CanvasElement> = {}
 
       switch (alignment) {
         case 'left':
@@ -254,16 +288,27 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
       get().updateElement(element.id, updates)
     })
+    get().endTransaction()
   },
 
   undo: () => {
-    // TODO: Implement undo functionality
-    console.log('Undo')
+    get().endTransaction()
+    const { history } = get()
+    const previous = history.past[history.past.length - 1]
+    if (!previous) return
+    rawSet({ ...structuredClone(previous), history: {
+      past: history.past.slice(0, -1), future: [snapshot(get()), ...history.future].slice(0, 100),
+    } })
   },
 
   redo: () => {
-    // TODO: Implement redo functionality
-    console.log('Redo')
+    get().endTransaction()
+    const { history } = get()
+    const next = history.future[0]
+    if (!next) return
+    rawSet({ ...structuredClone(next), history: {
+      past: [...history.past, snapshot(get())].slice(-100), future: history.future.slice(1),
+    } })
   },
 
   reset: () => {
@@ -282,9 +327,10 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const randomEmojis = ['🤔', '👍', '😍', '💡', '🎯', '✨', '🔥', '💪', '🎨', '📱']
 
     const state = get()
-    const textElement = state.elements.find((el) => el.type === 'text') as any
-    const emojiElement = state.elements.find((el) => el.type === 'emoji') as any
+    const textElement = state.elements.find((el) => el.type === 'text' && !el.locked)
+    const emojiElement = state.elements.find((el) => el.type === 'emoji' && !el.locked)
 
+    get().beginTransaction()
     if (textElement) {
       const randomText = randomTexts[Math.floor(Math.random() * randomTexts.length)]
       get().updateElement(textElement.id, { content: randomText })
@@ -294,6 +340,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       const randomEmoji = randomEmojis[Math.floor(Math.random() * randomEmojis.length)]
       get().updateElement(emojiElement.id, { emoji: randomEmoji })
     }
+    get().endTransaction()
   },
-}))
-
+})
+})

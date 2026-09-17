@@ -1,8 +1,8 @@
-import { Sparkles, Download, Undo, Redo, Save, RotateCcw } from 'lucide-react'
+import { Sparkles, Undo, Redo, RotateCcw } from 'lucide-react'
 import { useEditorStore } from '../store/editorStore'
 
 export default function Header() {
-  const { undo, redo, reset, generateRandomContent } = useEditorStore()
+  const { undo, redo, reset, generateRandomContent, history } = useEditorStore()
 
   return (
     <header className="glass sticky top-0 z-50 border-b border-white/20">
@@ -25,47 +25,44 @@ export default function Header() {
           <div className="flex items-center gap-4">
             <div className="text-right">
               <div className="text-sm font-semibold text-gray-700">WUTONG开源</div>
-              <div className="text-xs text-gray-500">
-                <span>WX：tkzypt</span>
-                <span className="mx-2">|</span>
-                <span>QQ：1622068165</span>
-              </div>
+              <a href="https://github.com/WUTONGCN/cover-pro" target="_blank" rel="noreferrer" className="text-xs text-gray-500">GitHub · MIT</a>
             </div>
 
             {/* Action Buttons */}
             <div className="flex items-center gap-1">
               <button
                 onClick={undo}
-                className="p-2 hover:bg-gray-100 rounded-md transition-colors"
+                disabled={history.past.length === 0}
+                aria-label="撤销"
+                className="p-2 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 title="撤销"
               >
                 <Undo className="w-4 h-4 text-gray-600" />
               </button>
               <button
                 onClick={redo}
-                className="p-2 hover:bg-gray-100 rounded-md transition-colors"
+                disabled={history.future.length === 0}
+                aria-label="重做"
+                className="p-2 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 title="重做"
               >
                 <Redo className="w-4 h-4 text-gray-600" />
               </button>
               <button
                 onClick={generateRandomContent}
-                className="p-2 hover:bg-gray-100 rounded-md transition-colors"
+                className="p-2 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 title="一键生成"
               >
                 <Sparkles className="w-4 h-4 text-gray-600" />
               </button>
               <button
-                onClick={reset}
-                className="p-2 hover:bg-gray-100 rounded-md transition-colors"
+                onClick={() => { if (window.confirm('确定清空当前画布？可通过撤销恢复。')) reset() }}
+                className="p-2 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 title="重置"
               >
                 <RotateCcw className="w-4 h-4 text-gray-600" />
               </button>
-              <div className="h-5 w-px bg-gray-300 mx-1" />
-              <button className="p-2 hover:bg-gray-100 rounded-md transition-colors" title="保存模板">
-                <Save className="w-4 h-4 text-gray-600" />
-              </button>
+
             </div>
           </div>
         </div>
