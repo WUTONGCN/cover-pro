@@ -53,6 +53,6 @@ npm run preview
 
 ## 隐私与贡献
 
-应用不发送编辑内容到后端。当前源码删除了个人联系方式和收款二维码，反馈统一使用 GitHub Issues；历史提交未重写。
+应用不发送编辑内容到后端。问题反馈请使用 GitHub Issues。
 
 见 [贡献指南](CONTRIBUTING.md)、[安全说明](SECURITY.md) 和 [MIT 协议](LICENSE)。新增功能请附带可复现验证；第三方库沿用自身许可证。
